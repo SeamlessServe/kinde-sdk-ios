@@ -13,7 +13,7 @@ class Keychain {
                 kSecAttrGeneric as String: encodedIdentifier,
                 kSecAttrAccount as String: encodedIdentifier,
                 kSecValueData as String: password,
-                kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly] as [String : Any]
+                kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly] as [String : Any]
     }
 
     private static func retrieveQuery(service: String) -> [String: Any] {
@@ -51,16 +51,21 @@ class Keychain {
     
     @discardableResult
     static func update(service: String, value: Data) -> OSStatus {
-        var keychainQueryDictionary = addQuery(service: service, password: value)
-        keychainQueryDictionary[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
-        
+        let keychainQueryDictionary = addQuery(service: service, password: value)
+
         let status: OSStatus = SecItemAdd(keychainQueryDictionary as CFDictionary, nil)
-        
-        if status == errSecSuccess {
-            return errSecSuccess
-        } else {
-            return status
+
+        // A previous item can survive when the delete before this add could not run - most often
+        // because the device was locked. Without this, SecItemAdd returns errSecDuplicateItem and the
+        // refreshed auth state is silently dropped, leaving a stale (and, under refresh token
+        // rotation, already consumed) token on disk. Update in place instead, which also restamps
+        // kSecAttrAccessible so items written by earlier builds migrate off kSecAttrAccessibleWhenUnlocked.
+        if status == errSecDuplicateItem {
+            return SecItemUpdate(searchQuery(service: service) as CFDictionary,
+                                 updateQuery(password: value))
         }
+
+        return status
     }
     
     @discardableResult

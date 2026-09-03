@@ -62,12 +62,13 @@ class AuthStateRepository: NSObject {
     
     @discardableResult
     private func removeFromKeychain() -> Bool {
-        if Keychain.get(self.key) != nil {
-            let cleared = Keychain.delete(service: self.key) == errSecSuccess
-            if !cleared {
-                self.logger?.error(message: "Failed to remove authState from the keychain")
-                return false
-            }
+        // Deliberately not gated on Keychain.get: that read fails while the device is locked, which
+        // used to skip the delete and still report success. SecItemDelete is idempotent, so calling
+        // it unconditionally is both simpler and honest about what happened.
+        let status = Keychain.delete(service: self.key)
+        if status != errSecSuccess && status != errSecItemNotFound {
+            self.logger?.error(message: "Failed to remove authState from the keychain")
+            return false
         }
         self.logger?.debug(message: "Removed authState from the keychain")
         return true
