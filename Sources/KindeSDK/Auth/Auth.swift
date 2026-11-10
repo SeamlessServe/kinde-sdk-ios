@@ -34,6 +34,24 @@ public final class Auth {
                accessTokenExpirationDate > Date()
     }
     
+    /// The access token held in the local auth state, returned as stored: no refresh, no network call
+    /// and no expiry check, so expect it to be expired.
+    ///
+    /// For offline-first clients that cannot reach Kinde. The client presents this token to its own
+    /// backend, the backend rejects it once it is reachable, and that rejection triggers the normal
+    /// `getToken()` refresh. Do not treat the value as proof of a live session.
+    ///
+    /// Returns nil when there is no stored auth state (never signed in, logged out, or the keychain is
+    /// unreadable while the device is locked). Also returns nil when the state has recorded an
+    /// authorization error, such as the refresh token being rejected, because that session can only
+    /// be recovered by signing in again.
+    public func getCachedAccessToken() -> String? {
+        guard let state = authStateRepository.state, state.isAuthorized else {
+            return nil
+        }
+        return state.lastTokenResponse?.accessToken
+    }
+    
     public func getUserDetails() -> User? {
         guard let params = authStateRepository.state?.lastTokenResponse?.idToken?.parsedJWT else {
             return nil
